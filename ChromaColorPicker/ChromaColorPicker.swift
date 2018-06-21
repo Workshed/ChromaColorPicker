@@ -30,7 +30,7 @@ public protocol ChromaColorPickerDelegate {
 }
 
 open class ChromaColorPicker: UIControl {
-    open var hexLabel: UILabel!
+    open var hexTextField: UITextField!
     open var shadeSlider: ChromaShadeSlider!
     open var handleView: ChromaHandle!
     open var handleLine: CAShapeLayer!
@@ -100,13 +100,15 @@ open class ChromaColorPicker: UIControl {
         handleLine.lineWidth = 2
         handleLine.strokeColor = UIColor.white.withAlphaComponent(0.2).cgColor
         
-        /* Setup Color Hex Label */
-        hexLabel = UILabel()
-        self.layoutHexLabel() //layout frame
-        hexLabel.layer.cornerRadius = 2
-        hexLabel.adjustsFontSizeToFitWidth = true
-        hexLabel.textAlignment = .center
-        hexLabel.textColor = UIColor(red: 51/255.0, green:51/255.0, blue: 51/255.0, alpha: 0.65)
+        /* Setup Color Hex Text Field */
+        hexTextField = UITextField()
+        self.layoutHexTextField() //layout frame
+        hexTextField.delegate = self
+        hexTextField.addTarget(self, action: #selector(hexTextFieldEdited), for: .editingDidEnd)
+        hexTextField.layer.cornerRadius = 2
+        hexTextField.adjustsFontSizeToFitWidth = true
+        hexTextField.textAlignment = .center
+        hexTextField.textColor = UIColor(red: 51/255.0, green:51/255.0, blue: 51/255.0, alpha: 0.65)
         
         /* Setup Shade Slider */
         shadeSlider = ChromaShadeSlider()
@@ -124,7 +126,7 @@ open class ChromaColorPicker: UIControl {
         /* Add components to view */
         self.layer.addSublayer(handleLine)
         self.addSubview(shadeSlider)
-        self.addSubview(hexLabel)
+        self.addSubview(hexTextField)
         self.addSubview(handleView)
         self.addSubview(addButton)
         self.addSubview(colorToggleButton)
@@ -139,7 +141,33 @@ open class ChromaColorPicker: UIControl {
         handleView.color = currentColor
         addButton.color = currentColor
         shadeSlider.primaryColor = currentColor
-        self.updateHexLabel() //update for hex value
+        self.updateHexTextField() //update for hex value
+    }
+    
+    @objc private func hexTextFieldEdited() {
+        guard let hexString = hexTextField.text?.trimmingCharacters(in: .whitespaces) else {
+            resetHexTextFieldColor()
+            return
+        }
+        let regexPattern = "^#([A-Fa-f0-9]{6})"
+        let regex = try! NSRegularExpression(pattern: regexPattern, options: [])
+        guard let match = regex.firstMatch(in: hexString, options: [], range: NSRange(location: 0, length: hexString.count)),
+            let resultRange = Range(match.range, in: hexString) else {
+            resetHexTextFieldColor()
+            return
+        }
+        
+        let hexColor = String(hexString[resultRange])
+        guard let newColor = UIColor.hexStringToUIColor(hex: hexColor) else {
+            resetHexTextFieldColor()
+            return
+        }
+        
+        adjustToColor(newColor)
+    }
+    
+    private func resetHexTextFieldColor() {
+        hexTextField.text = "#" + currentColor.hexCode
     }
     
     open func adjustToColor(_ color: UIColor){
@@ -173,7 +201,7 @@ open class ChromaColorPicker: UIControl {
         /* Will layout based on new angle */
         self.layoutHandle()
         self.layoutHandleLine()
-        self.updateHexLabel()
+        self.updateHexTextField()
     }
     
     //MARK: - Handle Touches
@@ -248,7 +276,7 @@ open class ChromaColorPicker: UIControl {
         }
         
         //Update Text Field display value
-        self.updateHexLabel()
+        self.updateHexTextField()
     }
     
   @objc func addButtonPressed(_ sender: ChromaAddButton){
@@ -345,7 +373,7 @@ open class ChromaColorPicker: UIControl {
         
         self.layoutShadeSlider()
         self.layoutHandleLine()
-        self.layoutHexLabel()
+        self.updateHexTextField()
         self.layoutColorToggleButton()
     }
     
@@ -382,12 +410,12 @@ open class ChromaColorPicker: UIControl {
     }
     
     /*
-    Pre: dependant on addButtons position
-    */
-    func layoutHexLabel(){
-        hexLabel.frame = CGRect(x: 0, y: 0, width: addButton.bounds.width*1.5, height: addButton.bounds.height/3)
-        hexLabel.center = CGPoint(x: self.bounds.midX, y: (addButton.frame.origin.y + (padding + handleView.frame.height/2 + stroke/2))/1.75) //Divided by 1.75 not 2 to make it a bit lower
-        hexLabel.font = UIFont(name: "Menlo-Regular", size: hexLabel.bounds.height)
+     Pre: dependant on addButtons position
+     */
+    func layoutHexTextField() {
+        hexTextField.frame = CGRect(x: 0, y: 0, width: addButton.bounds.width*1.5, height: addButton.bounds.height/3)
+        hexTextField.center = CGPoint(x: self.bounds.midX, y: (addButton.frame.origin.y + (padding + handleView.frame.height/2 + stroke/2))/1.75) //Divided by 1.75 not 2 to make it a bit lower
+        hexTextField.font = UIFont(name: "Menlo-Regular", size: hexTextField.bounds.height)
     }
     
     /*
@@ -418,8 +446,8 @@ open class ChromaColorPicker: UIControl {
         colorToggleButton.layoutSubviews()
     }
     
-    func updateHexLabel(){
-        hexLabel.text = "#" + currentColor.hexCode
+    func updateHexTextField(){
+        hexTextField.text = "#" + currentColor.hexCode
     }
     
     func updateCurrentColor(_ color: UIColor){
@@ -428,12 +456,14 @@ open class ChromaColorPicker: UIControl {
         self.sendActions(for: .valueChanged)
     }
     
-  @objc open func togglePickerColorMode() {
+    @objc open func togglePickerColorMode() {
         colorToggleButton.isEnabled = false // Lock
-        
+    
         // Redraw Assets (i.e. Large circle ring)
         setNeedsDisplay()
-        
+
+        let updateColor: UIColor
+    
         // Update subcomponents for color change
         if modeIsGrayscale {
             //Change color of colorToggleButton to the last handle color
@@ -441,39 +471,32 @@ open class ChromaColorPicker: UIControl {
             let shadedColor = handleView.color.darkerColor(0.25)
             colorToggleButton.hueColorGradientLayer.colors = [lightColor.cgColor, shadedColor.cgColor]
             
-            let gray = UIColor(red: 0.5, green: 0.5, blue: 0.5, alpha: 1)
-            self.handleView.color = gray
-            self.updateCurrentColor(gray)
-            self.updateHexLabel()
-            
-            //Update color for shade slider
-            shadeSlider.primaryColor = gray
+            updateColor = UIColor(red: 0.5, green: 0.5, blue: 0.5, alpha: 1)
         }
         else {
             // Update for normal rainbow
             
             // Use color stored in toggle button (set above), or else default to the angle it is at
-            var hueColor: UIColor
             if let storedColor = colorToggleButton.hueColorGradientLayer.colors?[0] {
-                hueColor = UIColor(cgColor: (storedColor as! CGColor))
+                updateColor = UIColor(cgColor: (storedColor as! CGColor))
                 
-                currentAngle = angleForColor(hueColor)
+                currentAngle = angleForColor(updateColor)
                 self.layoutHandleLine()
                 self.layoutHandle()
             }
             else {
                 let currentAngle = self.angleToCenterFromPoint(self.handleView.center)
-                hueColor = self.colorOnWheelFromAngle(currentAngle)
+                updateColor = self.colorOnWheelFromAngle(currentAngle)
             }
-            
-            self.handleView.color = hueColor
-            self.updateCurrentColor(hueColor)
-            self.updateHexLabel()
-            
-            //Update color for shade slider
-            shadeSlider.primaryColor = hueColor
         }
-        
+
+        self.handleView.color = updateColor
+        self.updateCurrentColor(updateColor)
+        self.updateHexTextField()
+
+        //Update color for shade slider
+        shadeSlider.primaryColor = updateColor
+    
         colorToggleButton.isEnabled = true // Unlock
     }
     
@@ -511,10 +534,16 @@ open class ChromaColorPicker: UIControl {
     }
 }
 
-
-extension ChromaColorPicker: ChromaShadeSliderDelegate{
+extension ChromaColorPicker: ChromaShadeSliderDelegate {
     public func shadeSliderChoseColor(_ slider: ChromaShadeSlider, color: UIColor) {
         self.updateCurrentColor(color) //update main controller for selected color
-        self.updateHexLabel()
+        self.updateHexTextField()
+    }
+}
+
+extension ChromaColorPicker: UITextFieldDelegate {
+    public func textFieldShouldReturn(_ textField: UITextField) -> Bool {
+        textField.resignFirstResponder()
+        return true
     }
 }

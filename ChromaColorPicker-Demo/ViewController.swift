@@ -34,8 +34,7 @@ class ViewController: UIViewController {
         colorPicker.supportsShadesOfGray = true // false by default
         //colorPicker.colorToggleButton.grayColorGradientLayer.colors = [UIColor.lightGray.cgColor, UIColor.gray.cgColor] // You can also override gradient colors
         
-        
-        colorPicker.hexLabel.textColor = UIColor.white
+        colorPicker.hexTextField.textColor = UIColor.white
         
         /* Don't want an element like the shade slider? Just hide it: */
         //colorPicker.shadeSlider.hidden = true
